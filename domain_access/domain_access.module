@@ -518,6 +518,15 @@ function domain_access_confirm_fields($entity_type, $bundle, $text = array()) {
 
     $id = $entity_type . '.' . $bundle . '.' . DOMAIN_ACCESS_FIELD;
 
+    // Check to avoid creating the field if it is already exported.
+    // This is a workaround for a problem with config_installer profile
+    // and domain_access trying to create the same config.
+    $config_storage = \Drupal::service('config.storage.sync');
+    $config = $config_storage->read('field.field.' . $id);
+    if (isset($config['id']) && $config['id'] == $id) {
+      return;
+    }
+
     if (!$field = \Drupal::entityTypeManager()->getStorage('field_config')->load($id)) {
       $field = array(
         'field_name' => DOMAIN_ACCESS_FIELD,
