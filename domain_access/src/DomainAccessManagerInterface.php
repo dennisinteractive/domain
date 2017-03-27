@@ -76,4 +76,14 @@ interface DomainAccessManagerInterface {
    */
   public static function getDefaultAllValue(FieldableEntityInterface $entity, FieldDefinitionInterface $definition);
 
+  /**
+   * Get a list of the domains the user belongs to.
+   * 
+   * @param \Drupal\Core\Entity\EntityInterface   $entity
+   *   The entity being created.
+   * @param \Drupal\Core\Session\AccountInterface $account
+   *   The user account passed.
+   * @return mixed
+   */
+  public function getUserDomainList(EntityInterface $entity, AccountInterface $account);
 }

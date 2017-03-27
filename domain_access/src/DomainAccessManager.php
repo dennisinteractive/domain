@@ -89,6 +89,14 @@ class DomainAccessManager implements DomainAccessManagerInterface {
   /**
    * @inheritdoc
    */
+  public function getUserDomainList(EntityInterface $entity, AccountInterface $account) {
+    $user = \Drupal::entityTypeManager()->getStorage('user')->load($account->id());
+    $user_domains = $this->getAccessValues($user);
+    return $user_domains;
+  }
+  /**
+   * @inheritdoc
+   */
   public static function getDefaultValue(FieldableEntityInterface $entity, FieldDefinitionInterface $definition) {
     $item = array();
     switch ($entity->getEntityType()->id()) {

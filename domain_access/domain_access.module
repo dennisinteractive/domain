@@ -592,11 +592,27 @@ function domain_access_views_data_alter(array &$data) {
       'help' => t('Filters out nodes not available on current domain (published to current domain or all affiliates).'),
     ),
   );
+  // User domains filter.
+  $data[$table]['user_domain_nodes'] = array(
+    'title' => t('User domains'),
+    'group' => t('Domain'),
+    'filter' => array(
+      'field' => DOMAIN_ACCESS_FIELD . '_target_id',
+      'id' => 'domain_access_user_domain_nodes_filter',
+      'title' => t('Available on user domains'),
+      'help' => t('Filters out nodes not available on user domains.'),
+    ),
+  );
 
   $table = 'user__' . DOMAIN_ACCESS_FIELD;
   $data[$table][DOMAIN_ACCESS_FIELD]['field']['id'] = 'domain_access_field';
   $data[$table][DOMAIN_ACCESS_FIELD . '_target_id']['filter']['id'] = 'domain_access_filter';
   $data[$table][DOMAIN_ACCESS_FIELD . '_target_id']['argument']['id'] = 'domain_access_argument';
+
+
+
+
+
 }
 
 /**
