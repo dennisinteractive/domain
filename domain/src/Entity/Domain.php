@@ -271,7 +271,8 @@ class Domain extends ConfigEntityBase implements DomainInterface {
    * {@inheritdoc}
    */
   public function setPath() {
-    $this->path = $this->getScheme() . $this->getHostname() . $GLOBALS['base_path'];
+    global $base_path;
+    $this->path = $this->getScheme() . $this->getHostname() . ($base_path ?: '/');
   }
 
   /**
