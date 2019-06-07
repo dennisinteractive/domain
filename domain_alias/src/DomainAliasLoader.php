@@ -3,9 +3,13 @@
 namespace Drupal\domain_alias;
 
 use Drupal\Core\Config\TypedConfigManagerInterface;
+use Drupal\domain\DomainInterface;
 
 /**
  * Alias loader utility class.
+ *
+ * @deprecated
+ *  This class will be removed before the 8.1.0 release.
  */
 class DomainAliasLoader implements DomainAliasLoaderInterface {
 
@@ -35,7 +39,7 @@ class DomainAliasLoader implements DomainAliasLoaderInterface {
    */
   public function loadSchema() {
     $fields = $this->typedConfig->getDefinition('domain_alias.alias.*');
-    return isset($fields['mapping']) ? $fields['mapping'] : array();
+    return isset($fields['mapping']) ? $fields['mapping'] : [];
   }
 
   /**
@@ -44,7 +48,7 @@ class DomainAliasLoader implements DomainAliasLoaderInterface {
   public function load($id, $reset = FALSE) {
     $controller = $this->getStorage();
     if ($reset) {
-      $controller->resetCache(array($id));
+      $controller->resetCache([$id]);
     }
     return $controller->load($id);
   }
@@ -52,7 +56,7 @@ class DomainAliasLoader implements DomainAliasLoaderInterface {
   /**
    * {@inheritdoc}
    */
-  public function loadMultiple($ids = NULL, $reset = FALSE) {
+  public function loadMultiple(array $ids = NULL, $reset = FALSE) {
     $controller = $this->getStorage();
     if ($reset) {
       $controller->resetCache($ids);
@@ -77,11 +81,33 @@ class DomainAliasLoader implements DomainAliasLoaderInterface {
    * {@inheritdoc}
    */
   public function loadByPattern($pattern) {
-    $result = $this->getStorage()->loadByProperties(array('pattern' => $pattern));
+    $result = $this->getStorage()->loadByProperties(['pattern' => $pattern]);
     if (empty($result)) {
       return NULL;
     }
     return current($result);
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function loadByEnvironment($environment) {
+    $result = $this->getStorage()->loadByProperties(['environment' => $environment]);
+    if (empty($result)) {
+      return NULL;
+    }
+    return $result;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function loadByEnvironmentMatch(DomainInterface $domain, $environment) {
+    $result = $this->getStorage()->loadByProperties(['domain_id' => $domain->id(), 'environment' => $environment]);
+    if (empty($result)) {
+      return [];
+    }
+    return $result;
   }
 
   /**
@@ -103,6 +129,7 @@ class DomainAliasLoader implements DomainAliasLoaderInterface {
    *   A hostname string, in the format example.com.
    *
    * @return array
+   *   An array of eligible matching patterns.
    */
   public function getPatterns($hostname) {
     $parts = explode('.', $hostname);
@@ -117,7 +144,7 @@ class DomainAliasLoader implements DomainAliasLoaderInterface {
     $patterns = $this->buildPatterns($parts);
     // Pattern lists are sorted based on the fewest wildcards. That gives us
     // more precise matches first.
-    uasort($patterns, array($this, 'sort'));
+    uasort($patterns, [$this, 'sort']);
     array_unshift($patterns, $hostname);
 
     // Account for ports.
@@ -135,7 +162,7 @@ class DomainAliasLoader implements DomainAliasLoaderInterface {
    * @param array $parts
    *   The hostname of the request, as an array split by dots.
    *
-   * @return array $patterns
+   * @return array
    *   An array of eligible matching patterns.
    */
   private function buildPatterns(array $parts) {
@@ -146,12 +173,12 @@ class DomainAliasLoader implements DomainAliasLoaderInterface {
       $temp[$i] = '*';
       $patterns[] = implode('.', $temp);
       // Advanced multi-value wildcards.
-      // Pattern *.*
+      // Pattern *.*.
       if (count($temp) > 2 && $i < ($count - 1)) {
         $temp[$i + 1] = '*';
         $patterns[] = implode('.', $temp);
       }
-      // Pattern foo.bar.*
+      // Pattern foo.bar.*.
       if ($count > 3 && $i < ($count - 2)) {
         $temp[$i + 2] = '*';
         $patterns[] = implode('.', $temp);
@@ -163,7 +190,7 @@ class DomainAliasLoader implements DomainAliasLoaderInterface {
         $temp[$i + 2] = '*';
         $patterns[] = implode('.', $temp);
       }
-      // Pattern *.foo.*.*
+      // Pattern *.foo.*.*.
       if ($count > 2) {
         $temp = array_fill(0, $count, '*');
         $temp[$i] = $parts[$i];
@@ -181,7 +208,7 @@ class DomainAliasLoader implements DomainAliasLoaderInterface {
    * @param string $hostname
    *   A hostname string, in the format example.com.
    *
-   * @return array $patterns
+   * @return array
    *   An array of eligible matching patterns, modified by port.
    */
   private function buildPortPatterns(array $patterns, $hostname) {

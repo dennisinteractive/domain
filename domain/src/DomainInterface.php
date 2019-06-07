@@ -13,6 +13,7 @@ interface DomainInterface extends ConfigEntityInterface {
    * Detects if the current domain is the active domain.
    *
    * @return bool
+   *   TRUE if domain enabled, FALSE otherwise.
    */
   public function isActive();
 
@@ -20,6 +21,7 @@ interface DomainInterface extends ConfigEntityInterface {
    * Detects if the current domain is the default domain.
    *
    * @return bool
+   *   TRUE if domain set as default, FALSE otherwise.
    */
   public function isDefault();
 
@@ -27,6 +29,7 @@ interface DomainInterface extends ConfigEntityInterface {
    * Detects if the domain uses https for links.
    *
    * @return bool
+   *   TRUE if domain protocol is HTTPS, FALSE otherwise.
    */
   public function isHttps();
 
@@ -74,7 +77,9 @@ interface DomainInterface extends ConfigEntityInterface {
   public function getUrl();
 
   /**
-   * Returns the scheme for a domain record.
+   * Returns the active scheme for a domain record.
+   *
+   * This method is to be used when generating URLs.
    *
    * @param bool $add_suffix
    *   Tells the method to return :// after the string.
@@ -83,6 +88,17 @@ interface DomainInterface extends ConfigEntityInterface {
    *   Returns a valid scheme (http or https), with or without the suffix.
    */
   public function getScheme($add_suffix = TRUE);
+
+  /**
+   * Returns the stored scheme value for a domain record.
+   *
+   * This method is to be used with forms and when saving domain records. It
+   * returns the raw value (http|https|variable) of the domain's default scheme.
+   *
+   * @return string
+   *   Returns a stored scheme default (http|https|variable) for the record.
+   */
+  public function getRawScheme();
 
   /**
    * Retrieves the value of the response test.
@@ -124,7 +140,7 @@ interface DomainInterface extends ConfigEntityInterface {
   /**
    * Returns the redirect status of the current domain.
    *
-   * @return integer | NULL
+   * @return int|null
    *   If numeric, the type of redirect to issue (301 or 302).
    */
   public function getRedirect();
@@ -185,7 +201,7 @@ interface DomainInterface extends ConfigEntityInterface {
    * Gets the type of record match returned by the negotiator.
    *
    * This value will be set by the domain negotiation routine and is not present
-   * when loading a domain record via DomainLoaderInterface.
+   * when loading a domain record via DomainStorageInterface.
    *
    * @return int
    *   The domain record match type.
@@ -195,8 +211,29 @@ interface DomainInterface extends ConfigEntityInterface {
   public function getMatchType();
 
   /**
+   * Find the port used for the domain.
+   *
+   * @return string
+   *   An optional port string (e.g. ':8080') or an empty string;
+   */
+  public function getPort();
+
+  /**
    * Creates a unique domain id for this record.
    */
   public function createDomainId();
+
+  /**
+   * Retrieves the canonical (registered) hostname for the domain.
+   *
+   * @return string
+   *   A hostname string.
+   */
+  public function getCanonical();
+
+  /**
+   * Sets the canonical (registered) hostname for the domain.
+   */
+  public function setCanonical($hostname = NULL);
 
 }

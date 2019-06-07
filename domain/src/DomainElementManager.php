@@ -2,7 +2,10 @@
 
 namespace Drupal\domain;
 
+use Drupal\Core\Entity\EntityInterface;
 use Drupal\Core\Form\FormStateInterface;
+use Drupal\Core\StringTranslation\StringTranslationTrait;
+use Drupal\Core\Entity\EntityTypeManagerInterface;
 
 /**
  * Generic base class for handling hidden field options.
@@ -14,30 +17,40 @@ use Drupal\Core\Form\FormStateInterface;
  *
  * This class has some similarities to DomainAccessManager, but only cares
  * about form handling. It can be used as a base class by other modules that
- * show/hide domain options. See the DomainSourceElementManager for a non-default
- * implementation.
+ * show/hide domain options. See the DomainSourceElementManager for a
+ * non-default implementation.
  */
 class DomainElementManager implements DomainElementManagerInterface {
 
+  use StringTranslationTrait;
+
   /**
-   * @var \Drupal\domain\DomainLoaderInterface
+   * The entity type manager.
+   *
+   * @var \Drupal\Core\Entity\EntityTypeManagerInterface
    */
-  protected $loader;
+  protected $entityTypeManager;
+
+  /**
+   * The domain storage.
+   *
+   * @var \Drupal\domain\DomainStorageInterface
+   */
+  protected $domainStorage;
 
   /**
    * Constructs a DomainElementManager object.
    *
-   * @param \Drupal\domain\DomainLoaderInterface $loader
-   *   The domain loader.
-   * @param \Drupal\domain\DomainNegotiatorInterface $negotiator
-   *   The domain negotiator.
+   * @param \Drupal\Core\Entity\EntityTypeManagerInterface $entity_type_manager
+   *   The entity type manager.
    */
-  public function __construct(DomainLoaderInterface $loader) {
-    $this->loader = $loader;
+  public function __construct(EntityTypeManagerInterface $entity_type_manager) {
+    $this->entityTypeManager = $entity_type_manager;
+    $this->domainStorage = $entity_type_manager->getStorage('domain');
   }
 
   /**
-   * @inheritdoc
+   * {@inheritdoc}
    */
   public function setFormOptions(array $form, FormStateInterface $form_state, $field_name, $hide_on_disallow = FALSE) {
     // There are cases, such as Entity Browser, where the form is partially
@@ -46,29 +59,49 @@ class DomainElementManager implements DomainElementManagerInterface {
       return $form;
     }
     $fields = $this->fieldList($field_name);
+    $empty = FALSE;
     $disallowed = $this->disallowedOptions($form_state, $form[$field_name]);
-    $empty = empty($form[$field_name]['widget']['#options']);
+    if (empty($form[$field_name]['widget']['#options']) ||
+         (count($form[$field_name]['widget']['#options']) == 1 &&
+          isset($form[$field_name]['widget']['#options']['_none'])
+         )
+       ) {
+      $empty = TRUE;
+    }
 
+    // If the domain form element is set as a group, and the field is not
+    // assigned to another group, then move it. See
+    // domain_access_form_node_form_alter().
+    if (isset($form['domain']) && !isset($form[$field_name]['#group'])) {
+      $form[$field_name]['#group'] = 'domain';
+    }
+    // If no values and we should hide the element, do so.
+    if ($hide_on_disallow && $empty) {
+      $form[$field_name]['#access'] = FALSE;
+    }
     // Check for domains the user cannot access or the absence of any options.
     if (!empty($disallowed) || $empty) {
       // @TODO: Potentially show this information to users with permission.
-      $form[$field_name . '_disallowed'] = array(
+      $form[$field_name . '_disallowed'] = [
         '#type' => 'value',
         '#value' => $disallowed,
-      );
-      $form['domain_hidden_fields'] = array(
+      ];
+      $form['domain_hidden_fields'] = [
         '#type' => 'value',
         '#value' => $fields,
-      );
+      ];
       if ($hide_on_disallow || $empty) {
         $form[$field_name]['#access'] = FALSE;
+      }
+      elseif (!empty($disallowed)) {
+        $form[$field_name]['widget']['#description'] .= $this->listDisallowed($disallowed);
       }
       // Call our submit function to merge in values.
       // Account for all the submit buttons on the node form.
       $buttons = ['preview', 'delete'];
       $submit = $this->getSubmitHandler();
       foreach ($form['actions'] as $key => $action) {
-        if (!in_array($key, $buttons) && is_array($action) && !in_array($submit, $form['actions'][$key]['#submit'])) {
+        if (!in_array($key, $buttons) && isset($form['actions'][$key]['#submit']) && !in_array($submit, $form['actions'][$key]['#submit'])) {
           array_unshift($form['actions'][$key]['#submit'], $submit);
         }
       }
@@ -78,11 +111,12 @@ class DomainElementManager implements DomainElementManagerInterface {
   }
 
   /**
-   * @inheritdoc
+   * {@inheritdoc}
    */
   public static function submitEntityForm(array &$form, FormStateInterface $form_state) {
     $fields = $form_state->getValue('domain_hidden_fields');
     foreach ($fields as $field) {
+      $entity_values = [];
       $values = $form_state->getValue($field . '_disallowed');
       if (!empty($values)) {
         $info = $form_state->getBuildInfo();
@@ -101,9 +135,9 @@ class DomainElementManager implements DomainElementManagerInterface {
   }
 
   /**
-   * @inheritdoc
+   * {@inheritdoc}
    */
-  public function disallowedOptions(FormStateInterface $form_state, $field) {
+  public function disallowedOptions(FormStateInterface $form_state, array $field) {
     $options = [];
     $info = $form_state->getBuildInfo();
     $entity = $form_state->getFormObject()->getEntity();
@@ -115,31 +149,33 @@ class DomainElementManager implements DomainElementManagerInterface {
   }
 
   /**
-   * @inheritdoc
+   * {@inheritdoc}
    */
   public function fieldList($field_name) {
     static $fields = [];
     $fields[] = $field_name;
-    return $fields;
+    // Return only unique field names. AJAX requests can result in duplicates.
+    // See https://www.drupal.org/project/domain/issues/2930934.
+    return array_unique($fields);
   }
 
   /**
-   * @inheritdoc
+   * {@inheritdoc}
    */
-  public function getFieldValues($entity, $field_name) {
+  public function getFieldValues(EntityInterface $entity, $field_name) {
     // @TODO: static cache.
-    $list = array();
+    $list = [];
     // @TODO In tests, $entity is returning NULL.
     if (is_null($entity)) {
       return $list;
     }
     // Get the values of an entity.
-    $values = $entity->get($field_name);
+    $values = $entity->hasField($field_name) ? $entity->get($field_name) : NULL;
     // Must be at least one item.
     if (!empty($values)) {
       foreach ($values as $item) {
         if ($target = $item->getValue()) {
-          if ($domain = $this->loader->load($target['target_id'])) {
+          if ($domain = $this->domainStorage->load($target['target_id'])) {
             $list[$domain->id()] = $domain->getDomainId();
           }
         }
@@ -149,10 +185,33 @@ class DomainElementManager implements DomainElementManagerInterface {
   }
 
   /**
-   * @inheritdoc
+   * {@inheritdoc}
    */
   public function getSubmitHandler() {
     return '\\Drupal\\domain\\DomainElementManager::submitEntityForm';
+  }
+
+  /**
+   * Lists the disallowed domains in the user interface.
+   *
+   * @param array $disallowed
+   *   An array of domain ids.
+   *
+   * @return string
+   *   A string suitable for display.
+   */
+  public function listDisallowed(array $disallowed) {
+    $domains = $this->domainStorage->loadMultiple($disallowed);
+    $string = $this->t('The following domains are currently assigned and cannot be changed:');
+    foreach ($domains as $domain) {
+      $items[] = $domain->label();
+    }
+    $build = [
+      '#theme' => 'item_list',
+      '#items' => $items,
+    ];
+    $string .= render($build);
+    return '<div class="disallowed">' . $string . '</div>';
   }
 
 }

@@ -19,7 +19,7 @@ class DomainController {
    *
    * @param \Drupal\domain\DomainInterface $domain
    *   A domain record object.
-   * @param string|NULL $op
+   * @param string|null $op
    *   The operation being performed, either 'default' to make the domain record
    *   the default, 'enable' to enable the domain record, or 'disable' to
    *   disable the domain record.
@@ -62,14 +62,14 @@ class DomainController {
 
     // Set a message.
     if ($success) {
-      drupal_set_message($message);
+      \Drupal::messenger()->addMessage($message);
     }
     else {
-      drupal_set_message($this->t('The operation failed.'));
+      \Drupal::messenger()->addMessage($this->t('The operation failed.'));
     }
 
     // Return to the invoking page.
-    $url = Url::fromRoute('domain.admin', array(), array('absolute' => TRUE));
+    $url = Url::fromRoute('domain.admin', [], ['absolute' => TRUE]);
     return new RedirectResponse($url->toString(), 302);
   }
 

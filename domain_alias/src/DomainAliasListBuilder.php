@@ -14,7 +14,7 @@ class DomainAliasListBuilder extends ConfigEntityListBuilder {
   /**
    * A domain object loaded from the controller.
    *
-   * @var DomainInterface $domain
+   * @var \Drupal\domain\DomainInterface
    */
   protected $domain;
 
@@ -24,6 +24,7 @@ class DomainAliasListBuilder extends ConfigEntityListBuilder {
   public function buildHeader() {
     $header['label'] = $this->t('Pattern');
     $header['redirect'] = $this->t('Redirect');
+    $header['environment'] = $this->t('Environment');
     return $header + parent::buildHeader();
   }
 
@@ -31,11 +32,12 @@ class DomainAliasListBuilder extends ConfigEntityListBuilder {
    * {@inheritdoc}
    */
   public function buildRow(EntityInterface $entity) {
-    $row = array();
+    $row = [];
 
     $row['label'] = $entity->label();
     $redirect = $entity->getRedirect();
     $row['redirect'] = empty($redirect) ? $this->t('None') : $redirect;
+    $row['environment'] = $entity->getEnvironment();
     $row += parent::buildRow($entity);
 
     return $row;
@@ -45,12 +47,12 @@ class DomainAliasListBuilder extends ConfigEntityListBuilder {
    * {@inheritdoc}
    */
   public function render() {
-    $build = array(
+    $build = [
       '#theme' => 'table',
       '#header' => $this->buildHeader(),
-      '#rows' => array(),
+      '#rows' => [],
       '#empty' => $this->t('No aliases have been created for this domain.'),
-    );
+    ];
     foreach ($this->load() as $entity) {
       if ($row = $this->buildRow($entity)) {
         $build['#rows'][$entity->id()] = $row;
@@ -90,7 +92,7 @@ class DomainAliasListBuilder extends ConfigEntityListBuilder {
   /**
    * Gets the domain context for this list.
    *
-   * @return \Drupal\domain\DomainInterface $domain
+   * @return \Drupal\domain\DomainInterface
    *   The domain that is context for this list.
    */
   public function getDomainId() {

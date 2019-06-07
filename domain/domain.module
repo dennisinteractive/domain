@@ -5,29 +5,16 @@
  * Defines a Domain concept for use with Drupal.
  */
 
+use Drupal\Core\Render\BubbleableMetadata;
 use Drupal\Core\Url;
 use Drupal\domain\DomainInterface;
 use Drupal\Core\Routing\RouteMatchInterface;
 use Drupal\Component\Utility\Html;
-use Drupal\field\Entity\FieldStorageConfig;
 
 /**
  * The name of the node access control field.
  */
 const DOMAIN_ADMIN_FIELD = 'field_domain_admin';
-
-/**
- * Implements hook_entity_bundle_info().
- */
-function domain_entity_bundle_info() {
-  $bundles['domain']['domain'] = array(
-    'label' => t('Domain record'),
-    'admin' => array(
-      'real path' => 'admin/config/domain',
-    ),
-  );
-  return $bundles;
-}
 
 /**
  * Entity URI callback.
@@ -84,10 +71,9 @@ function domain_token_info() {
 /**
  * Implements hook_tokens().
  */
-function domain_tokens($type, $tokens, array $data, array $options, \Drupal\Core\Render\BubbleableMetadata $bubbleable_metadata) {
+function domain_tokens($type, $tokens, array $data, array $options, BubbleableMetadata $bubbleable_metadata) {
   return \Drupal::service('domain.token')->getTokens($type, $tokens, $data, $options, $bubbleable_metadata);
 }
-
 
 /**
  * Implements hook_preprocess_HOOK() for html.html.twig.
@@ -97,91 +83,15 @@ function domain_preprocess_html(array &$variables) {
   $config = \Drupal::config('domain.settings');
   if ($string = $config->get('css_classes')) {
     $token = \Drupal::token();
-    // Prepare the class properly.
-    $variables['attributes']['class'][] = Html::getClass($token->replace($string));
-  }
-}
-
-/**
- * Creates our fields for an entity bundle.
- *
- * @param string $entity_type
- *   The entity type being created. Node and user are supported.
- * @param string $bundle
- *   The bundle being created.
- * @param string $handler
- *   The entity reference form widget to use. Defaults to 'default:domain'.
- *   See hook_domain_references_alter() for details.
- * @param array $text
- *   The text to use for the field. Keys are:
- *   'name' -- the lower-case, human-readable name of the entity.
- *   'label' -- the form label for the all affiliates field.
- *   'description' -- the help text for the all affiliates field.
- *
- *   If calling this function for entities other than user or node, it is the
- *   caller's responsibility to provide this text.
- *
- * This function is here for convenience during installation. It is not really
- * an API function. Modules wishing to add fields to non-node entities must
- * provide their own field storage. See the field storage YML sample in
- * tests/modules/domain_access_test for an example of field storage definitions.
- *
- * @TODO Update and abstract this function for use by other modules.
- */
-function domain_confirm_fields($entity_type, $bundle, $handler = 'default:domain', $text = array()) {
-  // We have reports that importing config causes this function to fail.
-  try {
-
-    $storage_id = $entity_type . '.' . DOMAIN_ADMIN_FIELD;
-    if (!$storage = \Drupal::entityTypeManager()->getStorage('field_storage_config')->load($storage_id)) {
-      $field_storage = [
-        'id' => $storage_id,
-        'field_name' => DOMAIN_ADMIN_FIELD,
-        'type' => 'entity_reference',
-        'dependencies' => array('domain' , 'user'),
-        'entity_type' => 'user',
-        'cardinality' => -1,
-        'module' => 'entity_reference',
-        'settings' => ['target_type' => 'domain'],
-      ];
-      $field_storage_config = FieldStorageConfig::create($field_storage);
-
-      $field_storage_config->save();
+    // Prepare the classes proparly, with one class per string.
+    $classes = explode(' ', trim($string));
+    foreach ($classes as $class) {
+      // Ensure no leading or trailing space.
+      $class = trim($class);
+      if (!empty($class)) {
+        $variables['attributes']['class'][] = Html::getClass($token->replace($class));
+      }
     }
-
-    $id = $storage_id = $entity_type . '.' . $bundle . '.' . DOMAIN_ADMIN_FIELD;
-    if (!$field = \Drupal::entityTypeManager()->getStorage('field_config')->load($id)) {
-      $field = array(
-        'field_name' => DOMAIN_ADMIN_FIELD,
-        'entity_type' => $entity_type,
-        'label' => 'Domain administrator',
-        'bundle' => $bundle,
-        // Users should not be required to be a domain editor.
-        'required' => $entity_type !== 'user',
-        'description' => 'Select the domains this user may administer',
-        'default_value' => [],
-        'settings' => [
-          'handler' => $handler,
-          'handler_settings' => [
-            'sort' => ['field' => 'weight', 'direction' => 'ASC'],
-          ],
-        ],
-      );
-      $field_config = \Drupal::entityTypeManager()->getStorage('field_config')->create($field);
-      $field_config->save();
-    }
-    // Tell the form system how to behave. Default to radio buttons.
-    // @TODO: This function is deprecated, but using the OO syntax is causing
-    // test fails.
-    entity_get_form_display($entity_type, $bundle, 'default')
-      ->setComponent(DOMAIN_ADMIN_FIELD, array(
-        'type' => 'options_buttons',
-        'weight' => 50,
-      ))
-      ->save();
-  }
-  catch (Exception $e) {
-    \Drupal::logger('domain')->notice('Field installation failed.');
   }
 }
 
@@ -214,4 +124,54 @@ function domain_domain_references_alter($query, $account, $context) {
       $query->condition('id', '-no-possible-match-');
     }
   }
+}
+
+/**
+ * Implements hook_views_data_alter().
+ */
+function domain_views_data_alter(array &$data) {
+  $table = 'user__' . DOMAIN_ADMIN_FIELD;
+  // Since domains are not stored in the database, relationships cannot be used.
+  unset($data[$table][DOMAIN_ADMIN_FIELD]['relationship']);
+}
+
+/**
+ * Implements hook_theme().
+ */
+function domain_theme() {
+  return [
+    'domain_nav_block' => [
+      'render element' => 'items',
+    ],
+  ];
+}
+
+/**
+ * Prepares variables for block templates.
+ *
+ * Default template: domain-nav-block.html.twig.
+ *
+ * @param array $variables
+ *   An associative array containing:
+ *   - items: An array of labels and urls for use in the list.
+ *     Properties used: 'label', 'url', 'active'.
+ */
+function template_preprocess_domain_nav_block(array &$variables) {
+  $variables['items'] = $variables['items']['#items'];
+}
+
+/**
+ * Implements hook_hook_info().
+ */
+function domain_hook_info() {
+  $hooks['domain_request_alter'] = [
+    'group' => 'domain',
+  ];
+  $hooks['domain_validate_alter'] = [
+    'group' => 'domain',
+  ];
+  $hooks['domain_references_alter'] = [
+    'group' => 'domain',
+  ];
+  return $hooks;
 }

@@ -16,7 +16,13 @@ class DomainAccessElementTest extends DomainTestBase {
    *
    * @var array
    */
-  public static $modules = array('domain', 'domain_access', 'field', 'field_ui', 'user');
+  public static $modules = [
+    'domain',
+    'domain_access',
+    'field',
+    'field_ui',
+    'user',
+  ];
 
   /**
    * {@inheritdoc}
@@ -24,37 +30,41 @@ class DomainAccessElementTest extends DomainTestBase {
   protected function setUp() {
     parent::setUp();
 
-    // Run the install hook.
-    // @TODO: figure out why this is necessary.
-    module_load_install('domain_access');
-    domain_access_install();
-
     // Create 5 domains.
     $this->domainCreateTestDomains(5);
   }
 
   /**
-   * Basic test setup.
+   * Test runner.
    */
   public function testDomainAccessElement() {
-    $admin = $this->drupalCreateUser(array(
+    $this->runInstalledTest('article');
+    $node_type = $this->createContentType(['type' => 'test']);
+    $this->runInstalledTest('test');
+  }
+
+  /**
+   * Basic test setup.
+   */
+  public function runInstalledTest($node_type) {
+    $admin = $this->drupalCreateUser([
       'bypass node access',
       'administer content types',
       'administer node fields',
       'administer node display',
       'administer domains',
       'publish to any domain',
-    ));
+    ]);
     $this->drupalLogin($admin);
 
-    $this->drupalGet('node/add/article');
+    $this->drupalGet('node/add/' . $node_type);
     $this->assertSession()->statusCodeEquals(200);
 
     // Set the title, so the node can be saved.
     $this->fillField('title[0][value]', 'Test node');
 
     // We expect to find 5 domain options. We set two as selected.
-    $domains = \Drupal::service('domain.loader')->loadMultiple();
+    $domains = \Drupal::entityTypeManager()->getStorage('domain')->loadMultiple();
     $count = 0;
     $ids = ['example_com', 'one_example_com', 'two_example_com'];
     foreach ($domains as $domain) {
@@ -75,8 +85,10 @@ class DomainAccessElementTest extends DomainTestBase {
     $this->pressButton('edit-submit');
     $this->assertSession()->statusCodeEquals(200);
 
+    // Get node data. Note that we create one new node for each test case.
     $storage = \Drupal::entityTypeManager()->getStorage('node');
-    $node = $storage->load(1);
+    $nid = $node_type == 'article' ? 1 : 2;
+    $node = $storage->load($nid);
     // Check that two values are set.
     $manager = \Drupal::service('domain_access.manager');
     $values = $manager->getAccessValues($node);
@@ -85,7 +97,11 @@ class DomainAccessElementTest extends DomainTestBase {
     $this->assert($value == 1, 'Node saved to all affiliates.');
 
     // Now login as a user with limited rights.
-    $account = $this->drupalCreateUser(array('create article content', 'edit any article content', 'publish to any assigned domain'));
+    $account = $this->drupalCreateUser([
+      'create ' . $node_type . ' content',
+      'edit any ' . $node_type . ' content',
+      'publish to any assigned domain',
+    ]);
     $ids = ['example_com', 'one_example_com'];
     $this->addDomainsToEntity('user', $account->id(), $ids, DOMAIN_ACCESS_FIELD);
     $user_storage = \Drupal::entityTypeManager()->getStorage('user');
@@ -123,8 +139,8 @@ class DomainAccessElementTest extends DomainTestBase {
     $this->assertSession()->statusCodeEquals(200);
 
     // Now, check the node.
-    $storage->resetCache(array($node->id()));
-    $node = $storage->load(1);
+    $storage->resetCache([$node->id()]);
+    $node = $storage->load($node->id());
     // Check that two values are set.
     $values = $manager->getAccessValues($node);
     $this->assert(count($values) == 2, 'Node saved with two domain records.');
