@@ -2,7 +2,6 @@ name: Domain Alpha Updates
 description: 'Provides per-release updates for critical changes.'
 type: module
 package: Domain
-version: VERSION
-core: 8.x
+core_version_requirement: ^8 || ^9 || ^10
 dependencies:
   - domain

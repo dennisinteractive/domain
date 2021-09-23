@@ -2,8 +2,7 @@ name: Domain
 description: 'Creates domain records within a Drupal installation.'
 type: module
 package: Domain
-version: VERSION
-core: 8.x
+core_version_requirement: ^8 || ^9 || ^10
 dependencies:
   - options
 configure: domain.admin
