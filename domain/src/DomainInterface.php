@@ -3,6 +3,7 @@
 namespace Drupal\domain;
 
 use Drupal\Core\Config\Entity\ConfigEntityInterface;
+use Drupal\domain\DomainNegotiatorInterface;
 
 /**
  * Provides an interface defining a domain entity.
@@ -10,9 +11,15 @@ use Drupal\Core\Config\Entity\ConfigEntityInterface;
 interface DomainInterface extends ConfigEntityInterface {
 
   /**
+   * The name of the admin access control field.
+   */
+  const DOMAIN_ADMIN_FIELD = 'field_domain_admin';
+
+  /**
    * Detects if the current domain is the active domain.
    *
    * @return bool
+   *   TRUE if domain enabled, FALSE otherwise.
    */
   public function isActive();
 
@@ -20,6 +27,7 @@ interface DomainInterface extends ConfigEntityInterface {
    * Detects if the current domain is the default domain.
    *
    * @return bool
+   *   TRUE if domain set as default, FALSE otherwise.
    */
   public function isDefault();
 
@@ -27,6 +35,7 @@ interface DomainInterface extends ConfigEntityInterface {
    * Detects if the domain uses https for links.
    *
    * @return bool
+   *   TRUE if domain protocol is HTTPS, FALSE otherwise.
    */
   public function isHttps();
 
@@ -74,7 +83,9 @@ interface DomainInterface extends ConfigEntityInterface {
   public function getUrl();
 
   /**
-   * Returns the scheme for a domain record.
+   * Returns the active scheme for a domain record.
+   *
+   * This method is to be used when generating URLs.
    *
    * @param bool $add_suffix
    *   Tells the method to return :// after the string.
@@ -83,6 +94,17 @@ interface DomainInterface extends ConfigEntityInterface {
    *   Returns a valid scheme (http or https), with or without the suffix.
    */
   public function getScheme($add_suffix = TRUE);
+
+  /**
+   * Returns the stored scheme value for a domain record.
+   *
+   * This method is to be used with forms and when saving domain records. It
+   * returns the raw value (http|https|variable) of the domain's default scheme.
+   *
+   * @return string
+   *   Returns a stored scheme default (http|https|variable) for the record.
+   */
+  public function getRawScheme();
 
   /**
    * Retrieves the value of the response test.
@@ -124,7 +146,7 @@ interface DomainInterface extends ConfigEntityInterface {
   /**
    * Returns the redirect status of the current domain.
    *
-   * @return integer | NULL
+   * @return int|null
    *   If numeric, the type of redirect to issue (301 or 302).
    */
   public function getRedirect();
@@ -175,17 +197,17 @@ interface DomainInterface extends ConfigEntityInterface {
    * @param int $match_type
    *   A numeric constant indicating the type of match derived by the caller.
    *   Use this value to determine if the request needs to be overridden. Valid
-   *   types are DomainNegotiator::DOMAIN_MATCH_NONE,
-   *   DomainNegotiator::DOMAIN_MATCH_EXACT,
-   *   DomainNegotiator::DOMAIN_MATCH_ALIAS.
+   *   types are DomainNegotiatorInterface::DOMAIN_MATCH_NONE,
+   *   DomainNegotiatorInterface::DOMAIN_MATCH_EXACT,
+   *   DomainNegotiatorInterface::DOMAIN_MATCH_ALIAS.
    */
-  public function setMatchType($match_type = DomainNegotiator::DOMAIN_MATCH_EXACT);
+  public function setMatchType($match_type = DomainNegotiatorInterface::DOMAIN_MATCHED_EXACT);
 
   /**
    * Gets the type of record match returned by the negotiator.
    *
    * This value will be set by the domain negotiation routine and is not present
-   * when loading a domain record via DomainLoaderInterface.
+   * when loading a domain record via DomainStorageInterface.
    *
    * @return int
    *   The domain record match type.
@@ -195,8 +217,29 @@ interface DomainInterface extends ConfigEntityInterface {
   public function getMatchType();
 
   /**
+   * Find the port used for the domain.
+   *
+   * @return string
+   *   An optional port string (e.g. ':8080') or an empty string;
+   */
+  public function getPort();
+
+  /**
    * Creates a unique domain id for this record.
    */
   public function createDomainId();
+
+  /**
+   * Retrieves the canonical (registered) hostname for the domain.
+   *
+   * @return string
+   *   A hostname string.
+   */
+  public function getCanonical();
+
+  /**
+   * Sets the canonical (registered) hostname for the domain.
+   */
+  public function setCanonical($hostname = NULL);
 
 }

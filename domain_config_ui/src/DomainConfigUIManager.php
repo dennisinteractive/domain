@@ -2,175 +2,88 @@
 
 namespace Drupal\domain_config_ui;
 
-use Drupal\domain\DomainLoaderInterface;
-use Drupal\domain\DomainInterface;
-use Drupal\Core\Config\StorageInterface;
-use Drupal\Core\Language\LanguageManagerInterface;
-use Drupal\Core\Language\LanguageInterface;
+use Symfony\Component\HttpFoundation\RequestStack;
 
 /**
  * Domain Config UI manager.
  */
-class DomainConfigUIManager {
-  /**
-   * A storage controller instance for reading and writing configuration data.
-   *
-   * @var StorageInterface
-   */
-  protected $storage;
+class DomainConfigUIManager implements DomainConfigUIManagerInterface {
 
   /**
-   * Domain loader.
+   * A RequestStack instance.
    *
-   * @var DomainLoaderInterface
+   * @var \Symfony\Component\HttpFoundation\RequestStack
    */
-  protected $domainLoader;
+  protected $requestStack;
 
   /**
-   * Language manager.
+   * The current request.
    *
-   * @var LanguageManagerInterface
+   * @var \Symfony\Component\HttpFoundation\Request
    */
-  protected $languageManager;
+  protected $currentRequest;
 
   /**
-   * The domain context of the request.
+   * Constructs DomainConfigUIManager object.
    *
-   * @var DomainInterface $domain
+   * @param \Symfony\Component\HttpFoundation\RequestStack $request_stack
+   *   The request stack.
    */
-  protected $domain;
-
-  /**
-   * The language context of the request.
-   *
-   * @var LanguageInterface $language
-   */
-  protected $language;
-
-  /**
-   * Constructs domain config UI service.
-   *
-   * @param StorageInterface $storage
-   *   The configuration storage engine.
-   * @param DomainLoaderInterface $domain_loader
-   *   The domain loader.
-   */
-  public function __construct(StorageInterface $storage, DomainLoaderInterface $domain_loader, LanguageManagerInterface $language_manager) {
-    $this->storage = $storage;
-    $this->domainLoader = $domain_loader;
-    $this->languageManager = $language_manager;
-
-    // Get the language context.
-    if ($language = $this->getSelectedLanguage()) {
-      $this->language = $language;
-    }
-
-    // Get the domain context.
-    if ($domain = $this->getSelectedDomain()) {
-      $this->domain = $domain;
-    }
+  public function __construct(RequestStack $request_stack) {
+    // We want the currentRequest, but it is not always available.
+    // https://www.drupal.org/project/domain/issues/3004243#comment-13700917
+    $this->requestStack = $request_stack;
   }
 
   /**
-   * Load only overrides for selected domain and language.
+   * {@inheritdoc}
    */
-  public function loadOverrides($names) {
-    $overrides = [];
-    if (!empty($this->domain)) {
-      foreach ($names as $name) {
-        $config_name = $this->getSelectedConfigName($name);
-        if ($override = $this->storage->read($config_name)) {
-          $overrides[$name] = $override;
-        }
+  public function getSelectedConfigName($name, $omit_language = FALSE) {
+    if ($domain_id = $this->getSelectedDomainId()) {
+      $prefix = "domain.config.{$domain_id}.";
+      if (!$omit_language && $langcode = $this->getSelectedLanguageId()) {
+        $prefix .= "{$langcode}.";
       }
-    }
-    return $overrides;
-  }
-
-  /**
-   * Get selected config name.
-   * @param string $name
-   */
-  public function getSelectedConfigName($name) {
-    // Build prefix and add to front of existing key.
-    if ($selected_domain = $this->getSelectedDomain()) {
-      $prefix = 'domain.config.' . $selected_domain->id() . '.';
-      // Add selected language.
-      if ($language = $this->getSelectedLanguage()) {
-        $prefix .= $language->getId() . '.';
-      }
-      $name = $prefix . $name;
+      return $prefix . $name;
     }
     return $name;
   }
 
   /**
-   * Get the selected domain.
-   */
-  public function getSelectedDomain() {
-    $selected_domain_id = $this->getSelectedDomainId();
-    if ($selected_domain_id && $selected_domain = $this->domainLoader->load($selected_domain_id)) {
-      return $selected_domain;
-    }
-  }
-
-  /**
-   * Get the selected domain ID.
+   * {@inheritdoc}
    */
   public function getSelectedDomainId() {
-    return !empty($_SESSION['domain_config_ui']['config_save_domain']) ? $_SESSION['domain_config_ui']['config_save_domain'] : '';
-  }
-
-  /**
-   * Set the current selected domain ID.
-   * @param string $domain_id
-   */
-  public function setSelectedDomain($domain_id) {
-    if ($domain = $this->domainLoader->load($domain_id)) {
-      // Set session for subsequent request.
-      $_SESSION['domain_config_ui']['config_save_domain'] = $domain_id;
-      // Switch active domain now so that selected domain configuration can be loaded immediatly.
-      // This is primarily for switching domain with AJAX request.
-      $this->domain = $domain;
+    if (!empty($this->getRequest()) && $domain = $this->currentRequest->get('domain_config_ui_domain')) {
+      return $domain;
     }
-    else {
-      $_SESSION['domain_config_ui']['config_save_domain'] = '';
-      unset($this->domain);
+    elseif (isset($_SESSION['domain_config_ui_domain'])) {
+      return $_SESSION['domain_config_ui_domain'];
     }
   }
 
   /**
-   * Set the selected language.
-   * @param string $language_id
-   */
-  public function setSelectedLanguage($language_id) {
-    if ($language = $this->languageManager->getLanguage($language_id)) {
-      // Set session for subsequent request.
-      $_SESSION['domain_config_ui']['config_save_language'] = $language_id;
-      // Switch active language now so that selected domain configuration can be loaded immediatly.
-      // This is primarily for switching domain with AJAX request.
-      $this->language = $language;
-    }
-    else {
-      $_SESSION['domain_config_ui']['config_save_language'] = '';
-      unset($this->language);
-    }
-  }
-
-  /**
-   * Get the selected language ID.
+   * {@inheritdoc}
    */
   public function getSelectedLanguageId() {
-    return !empty($_SESSION['domain_config_ui']['config_save_language']) ? $_SESSION['domain_config_ui']['config_save_language'] : '';
+    if (!empty($this->getRequest()) && $language = $this->currentRequest->get('domain_config_ui_language')) {
+      return $language;
+    }
+    elseif (isset($_SESSION['domain_config_ui_language'])) {
+      return $_SESSION['domain_config_ui_language'];
+    }
   }
 
   /**
-   * Get the selected language.
+   * Ensures that the currentRequest is loaded.
+   *
+   * @return Symfony\Component\HttpFoundation\Request|null
+   *   The current request object.
    */
-  public function getSelectedLanguage() {
-    $selected_language_id = $this->getSelectedLanguageId();
-    if ($selected_language_id && $selected_language = $this->languageManager->getLanguage($selected_language_id)) {
-      return $selected_language;
+  private function getRequest() {
+    if (!isset($this->currentRequest)) {
+      $this->currentRequest = $this->requestStack->getCurrentRequest();
     }
+    return $this->currentRequest;
   }
+
 }

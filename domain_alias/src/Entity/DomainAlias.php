@@ -14,7 +14,7 @@ use Drupal\Core\Entity\EntityStorageInterface;
  *   label = @Translation("Domain alias"),
  *   module = "domain_alias",
  *   handlers = {
- *     "storage" = "Drupal\Core\Config\Entity\ConfigEntityStorage",
+ *     "storage" = "Drupal\domain_alias\DomainAliasStorage",
  *     "access" = "Drupal\domain_alias\DomainAliasAccessControlHandler",
  *     "list_builder" = "Drupal\domain_alias\DomainAliasListBuilder",
  *     "form" = {
@@ -30,6 +30,7 @@ use Drupal\Core\Entity\EntityStorageInterface;
  *     "domain_id" = "domain_id",
  *     "label" = "pattern",
  *     "uuid" = "uuid",
+ *     "environment" = "environment",
  *   },
  *   links = {
  *     "delete-form" = "/admin/config/domain/alias/delete/{domain_alias}",
@@ -40,6 +41,7 @@ use Drupal\Core\Entity\EntityStorageInterface;
  *     "domain_id",
  *     "pattern",
  *     "redirect",
+ *     "environment",
  *   }
  * )
  */
@@ -76,9 +78,16 @@ class DomainAlias extends ConfigEntityBase implements DomainAliasInterface {
   /**
    * The domain alias record redirect value.
    *
-   * @var integer
+   * @var int
    */
   protected $redirect;
+
+  /**
+   * The domain alias record environment value.
+   *
+   * @var string
+   */
+  protected $environment;
 
   /**
    * {@inheritdoc}
@@ -90,8 +99,24 @@ class DomainAlias extends ConfigEntityBase implements DomainAliasInterface {
   /**
    * {@inheritdoc}
    */
+  public function getEnvironment() {
+    return !empty($this->environment) ? $this->environment : 'default';
+  }
+
+  /**
+   * {@inheritdoc}
+   */
   public function getDomainId() {
     return $this->domain_id;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getDomain() {
+    $storage = \Drupal::entityTypeManager()->getStorage('domain');
+    $domains = $storage->loadByProperties(['domain_id' => $this->domain_id]);
+    return $domains ? current($domains) : NULL;
   }
 
   /**

@@ -2,13 +2,13 @@
 
 namespace Drupal\domain_alias\Controller;
 
+use Drupal\Core\Controller\ControllerBase;
 use Drupal\domain\DomainInterface;
-use Drupal\domain\Controller\DomainControllerBase;
 
 /**
  * Returns responses for Domain Alias module routes.
  */
-class DomainAliasController extends DomainControllerBase {
+class DomainAliasController extends ControllerBase {
 
   /**
    * Provides the domain alias submission form.
@@ -23,8 +23,9 @@ class DomainAliasController extends DomainControllerBase {
     // The entire purpose of this controller is to add the values from
     // the parent domain entity.
     $values['domain_id'] = $domain->id();
-    // @TODO: ensure that this value is present in all cases.
-    $alias = \Drupal::entityTypeManager()->getStorage('domain_alias')->create($values);
+
+    // Create the stub alias with reference to the parent domain.
+    $alias = $this->entityTypeManager()->getStorage('domain_alias')->create($values);
 
     return $this->entityFormBuilder()->getForm($alias);
   }
@@ -39,7 +40,7 @@ class DomainAliasController extends DomainControllerBase {
    *   A render array as expected by drupal_render().
    */
   public function listing(DomainInterface $domain) {
-    $list = \Drupal::entityTypeManager()->getListBuilder('domain_alias');
+    $list = $this->entityTypeManager()->getListBuilder('domain_alias');
     $list->setDomain($domain);
     return $list->render();
   }
