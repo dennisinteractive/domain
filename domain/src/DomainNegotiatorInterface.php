@@ -8,6 +8,29 @@ namespace Drupal\domain;
 interface DomainNegotiatorInterface {
 
   /**
+   * Defines record matching types when dealing with request alteration.
+   *
+   * These constants are designed to help modules know how to react to a
+   * domain record match, since an exact match is more important than a pattern
+   * match.
+   *
+   * @see hook_domain_request_alter().
+   *
+   * No matching record found.
+   */
+  const DOMAIN_MATCHED_NONE = 0;
+
+  /**
+   * An exact domain record string match found.
+   */
+  const DOMAIN_MATCHED_EXACT = 1;
+
+  /**
+   * An alias pattern match found.
+   */
+  const DOMAIN_MATCHED_ALIAS = 2;
+
+  /**
    * Determines the active domain request.
    *
    * The negotiator is passed an httpHost value, which is checked against domain
@@ -77,5 +100,17 @@ interface DomainNegotiatorInterface {
    *   The active domain object.
    */
   public function getActiveDomain($reset = FALSE);
+
+  /**
+   * Checks that a URL's hostname is registered as a valid domain or alias.
+   *
+   * @param string $hostname
+   *   A string representing the hostname of the request (e.g. example.com).
+   *
+   * @return bool
+   *   TRUE if a URL's hostname is registered as a valid domain or alias, or
+   *   FALSE.
+   */
+  public function isRegisteredDomain($hostname);
 
 }

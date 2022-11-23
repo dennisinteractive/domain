@@ -2,12 +2,13 @@
 
 namespace Drupal\domain\ContextProvider;
 
-use Drupal\domain\DomainNegotiatorInterface;
 use Drupal\Core\Cache\CacheableMetadata;
 use Drupal\Core\Plugin\Context\Context;
-use Drupal\Core\Plugin\Context\ContextDefinition;
 use Drupal\Core\Plugin\Context\ContextProviderInterface;
+use Drupal\Core\Plugin\Context\EntityContext;
+use Drupal\Core\Plugin\Context\EntityContextDefinition;
 use Drupal\Core\StringTranslation\StringTranslationTrait;
+use Drupal\domain\DomainNegotiatorInterface;
 
 /**
  * Provides a context handler for the block system.
@@ -37,19 +38,21 @@ class CurrentDomainContext implements ContextProviderInterface {
    * {@inheritdoc}
    */
   public function getRuntimeContexts(array $unqualified_context_ids) {
+    $context = NULL;
     // Load the current domain.
     $current_domain = $this->negotiator->getActiveDomain();
-    // Set the context.
-    $context = new Context(new ContextDefinition('entity:domain', $this->t('Active domain')), $current_domain);
-
-    // Allow caching.
-    $cacheability = new CacheableMetadata();
-    $cacheability->setCacheContexts(['url.site']);
-    $context->addCacheableDependency($cacheability);
+    // Set the context, if we have a domain.
+    if (!empty($current_domain) && !empty($current_domain->id())) {
+      $context = EntityContext::fromEntity($current_domain, $this->t('Active domain'));
+      // Allow caching.
+      $cacheability = new CacheableMetadata();
+      $cacheability->setCacheContexts(['url.site']);
+      $context->addCacheableDependency($cacheability);
+    }
 
     // Prepare the result.
     $result = [
-      'entity:domain' => $context,
+      'domain' => $context,
     ];
 
     return $result;
@@ -59,7 +62,11 @@ class CurrentDomainContext implements ContextProviderInterface {
    * {@inheritdoc}
    */
   public function getAvailableContexts() {
-    return $this->getRuntimeContexts([]);
+    // See https://www.drupal.org/project/domain/issues/3201514
+    if ($this->negotiator->getActiveDomain()) {
+      return $this->getRuntimeContexts([]);
+    }
+    return [];
   }
 
 }

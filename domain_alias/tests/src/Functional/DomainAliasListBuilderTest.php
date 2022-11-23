@@ -2,21 +2,21 @@
 
 namespace Drupal\Tests\domain_alias\Functional;
 
-use Drupal\Tests\domain\Functional\DomainTestBase;
+use Drupal\domain\DomainInterface;
 
 /**
  * Tests behavior for the domain list builder.
  *
  * @group domain_alias
  */
-class DomainAliasListBuilderTest extends DomainTestBase {
+class DomainAliasListBuilderTest extends DomainAliasTestBase {
 
   /**
    * Modules to enable.
    *
    * @var array
    */
-  public static $modules = array('domain', 'domain_alias', 'user');
+  public static $modules = ['domain', 'domain_alias', 'user'];
 
   /**
    * {@inheritdoc}
@@ -32,7 +32,7 @@ class DomainAliasListBuilderTest extends DomainTestBase {
    * Basic test setup.
    */
   public function testDomainListBuilder() {
-    $admin = $this->drupalCreateUser(array(
+    $admin = $this->drupalCreateUser([
       'bypass node access',
       'administer content types',
       'administer node fields',
@@ -40,7 +40,7 @@ class DomainAliasListBuilderTest extends DomainTestBase {
       'administer domains',
       'administer domain aliases',
       'view domain aliases',
-    ));
+    ]);
     $this->drupalLogin($admin);
 
     $this->drupalGet('admin/config/domain');
@@ -53,20 +53,20 @@ class DomainAliasListBuilderTest extends DomainTestBase {
     }
 
     // Now login as a user with limited rights.
-    $account = $this->drupalCreateUser(array(
+    $account = $this->drupalCreateUser([
       'create article content',
       'edit any article content',
       'edit assigned domains',
       'view domain list',
       'view domain aliases',
       'edit domain aliases',
-    ));
+    ]);
     $ids = ['example_com', 'one_example_com'];
-    $this->addDomainsToEntity('user', $account->id(), $ids, DOMAIN_ADMIN_FIELD);
+    $this->addDomainsToEntity('user', $account->id(), $ids, DomainInterface::DOMAIN_ADMIN_FIELD);
     $user_storage = \Drupal::entityTypeManager()->getStorage('user');
     $user = $user_storage->load($account->id());
     $manager = \Drupal::service('domain.element_manager');
-    $values = $manager->getFieldValues($user, DOMAIN_ADMIN_FIELD);
+    $values = $manager->getFieldValues($user, DomainInterface::DOMAIN_ADMIN_FIELD);
     $this->assert(count($values) == 2, 'User saved with two domain records.');
 
     $this->drupalLogin($account);

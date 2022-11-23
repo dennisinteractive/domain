@@ -2,12 +2,14 @@
 
 namespace Drupal\domain\Entity;
 
+use Drupal\Core\Config\ConfigValueException;
 use Drupal\Core\Config\Entity\ConfigEntityBase;
 use Drupal\Core\Entity\EntityStorageInterface;
 use Drupal\Core\Link;
 use Drupal\Core\Url;
 use Drupal\Core\StringTranslation\StringTranslationTrait;
 use Drupal\domain\DomainInterface;
+use Drupal\domain\DomainNegotiatorInterface;
 
 /**
  * Defines the domain entity.
@@ -17,11 +19,9 @@ use Drupal\domain\DomainInterface;
  *   label = @Translation("Domain record"),
  *   module = "domain",
  *   handlers = {
- *     "storage" = "Drupal\Core\Config\Entity\ConfigEntityStorage",
- *     "view_builder" = "Drupal\domain\DomainViewBuilder",
+ *     "storage" = "Drupal\domain\DomainStorage",
  *     "access" = "Drupal\domain\DomainAccessControlHandler",
  *     "list_builder" = "Drupal\domain\DomainListBuilder",
- *     "view_builder" = "Drupal\domain\DomainViewBuilder",
  *     "form" = {
  *       "default" = "Drupal\domain\DomainForm",
  *       "edit" = "Drupal\domain\DomainForm",
@@ -35,6 +35,7 @@ use Drupal\domain\DomainInterface;
  *     "domain_id" = "domain_id",
  *     "label" = "name",
  *     "uuid" = "uuid",
+ *     "status" = "status",
  *     "weight" = "weight"
  *   },
  *   links = {
@@ -69,16 +70,9 @@ class Domain extends ConfigEntityBase implements DomainInterface {
   /**
    * The domain record ID.
    *
-   * @var integer
+   * @var int
    */
   protected $domain_id;
-
-  /**
-   * The domain record UUID.
-   *
-   * @var string
-   */
-  protected $uuid;
 
   /**
    * The domain list name (e.g. Drupal).
@@ -95,25 +89,18 @@ class Domain extends ConfigEntityBase implements DomainInterface {
   protected $hostname;
 
   /**
-   * The domain status.
-   *
-   * @var boolean
-   */
-  protected $status;
-
-  /**
    * The domain record sort order.
    *
-   * @var integer
+   * @var int
    */
   protected $weight;
 
   /**
    * Indicates the default domain.
    *
-   * @var boolean
+   * @var bool
    */
-  protected $is_default;
+  protected $is_default = FALSE;
 
   /**
    * The domain record protocol (e.g. http://).
@@ -139,40 +126,45 @@ class Domain extends ConfigEntityBase implements DomainInterface {
   /**
    * The domain record http response test (e.g. 200), a calculated value.
    *
-   * @var integer
+   * @var int
    */
   protected $response = NULL;
 
   /**
    * The redirect method to use, if needed.
+   *
+   * @var int|null
    */
   protected $redirect = NULL;
 
   /**
    * The type of match returned by the negotiator.
+   *
+   * @var int
    */
   protected $matchType;
 
   /**
-   * Overrides Drupal\Core\Entity\Entity:preCreate().
+   * The canonical hostname for the domain.
    *
-   * @param \Drupal\Core\Entity\EntityStorageInterface $storage_controller
-   *   The entity storage object.
-   * @param mixed[] $values
-   *   An array of values to set, keyed by property name. If the entity type has
-   *   bundles the bundle key has to be specified.
+   * @var string
+   */
+  protected $canonical;
+
+  /**
+   * {@inheritdoc}
    */
   public static function preCreate(EntityStorageInterface $storage_controller, array &$values) {
     parent::preCreate($storage_controller, $values);
-    $loader = \Drupal::service('domain.loader');
-    $default = $loader->loadDefaultId();
-    $domains = $loader->loadMultiple();
-    $values += array(
+    $domain_storage = \Drupal::entityTypeManager()->getStorage('domain');
+    $default = $domain_storage->loadDefaultId();
+    $count = $storage_controller->getQuery()->count()->execute();
+    $values += [
       'scheme' => empty($GLOBALS['is_https']) ? 'http' : 'https',
       'status' => 1,
-      'weight' => count($domains) + 1,
+      'weight' => $count + 1,
       'is_default' => (int) empty($default),
-    );
+    ];
     // Note that we have not created a domain_id, which is only used for
     // node access control and will be added on save.
   }
@@ -182,7 +174,7 @@ class Domain extends ConfigEntityBase implements DomainInterface {
    */
   public function isActive() {
     $negotiator = \Drupal::service('domain.negotiator');
-    /** @var DomainInterface $domain */
+    /** @var self $domain */
     $domain = $negotiator->getActiveDomain();
     if (empty($domain)) {
       return FALSE;
@@ -219,38 +211,42 @@ class Domain extends ConfigEntityBase implements DomainInterface {
   public function saveDefault() {
     if (!$this->isDefault()) {
       // Swap the current default.
-      /** @var DomainInterface $default */
-      if ($default = \Drupal::service('domain.loader')->loadDefaultDomain()) {
-        $default->is_default = 0;
+      /** @var self $default */
+      if ($default = \Drupal::entityTypeManager()->getStorage('domain')->loadDefaultDomain()) {
+        $default->is_default = FALSE;
+        $default->setHostname($default->getCanonical());
         $default->save();
       }
       // Save the new default.
-      $this->is_default = 1;
+      $this->is_default = TRUE;
+      $this->setHostname($this->getCanonical());
       $this->save();
     }
     else {
-      drupal_set_message($this->t('The selected domain is already the default.'), 'warning');
+      \Drupal::messenger()->addMessage($this->t('The selected domain is already the default.'), 'warning');
     }
   }
 
   /**
-   * Overrides Drupal\Core\Config\Entity\ConfigEntityBase::enable().
+   * {@inheritdoc}
    */
   public function enable() {
     $this->setStatus(TRUE);
+    $this->setHostname($this->getCanonical());
     $this->save();
   }
 
   /**
-   * Overrides Drupal\Core\Config\Entity\ConfigEntityBase::disable().
+   * {@inheritdoc}
    */
   public function disable() {
     if (!$this->isDefault()) {
       $this->setStatus(FALSE);
+      $this->setHostname($this->getCanonical());
       $this->save();
     }
     else {
-      drupal_set_message($this->t('The default domain cannot be disabled.'), 'warning');
+      \Drupal::messenger()->addMessage($this->t('The default domain cannot be disabled.'), 'warning');
     }
   }
 
@@ -260,15 +256,16 @@ class Domain extends ConfigEntityBase implements DomainInterface {
   public function saveProperty($name, $value) {
     if (isset($this->{$name})) {
       $this->{$name} = $value;
+      $this->setHostname($this->getCanonical());
       $this->save();
-      drupal_set_message($this->t('The @key attribute was set to @value for domain @hostname.', array(
+      \Drupal::messenger()->addMessage($this->t('The @key attribute was set to @value for domain @hostname.', [
         '@key' => $name,
         '@value' => $value,
         '@hostname' => $this->hostname,
-      )));
+      ]));
     }
     else {
-      drupal_set_message($this->t('The @key attribute does not exist.', array('@key' => $name)));
+      \Drupal::messenger()->addMessage($this->t('The @key attribute does not exist.', ['@key' => $name]));
     }
   }
 
@@ -276,14 +273,16 @@ class Domain extends ConfigEntityBase implements DomainInterface {
    * {@inheritdoc}
    */
   public function setPath() {
-    $this->path = $this->getScheme() . $this->getHostname() . base_path();
+    global $base_path;
+    $this->path = $this->getScheme() . $this->getHostname() . ($base_path ?: '/');
   }
 
   /**
    * {@inheritdoc}
    */
   public function setUrl() {
-    $uri = \Drupal::request()->getRequestUri();
+    $request = \Drupal::request();
+    $uri = $request ? $request->getRequestUri() : '/';
     $this->url = $this->getScheme() . $this->getHostname() . $uri;
   }
 
@@ -329,27 +328,32 @@ class Domain extends ConfigEntityBase implements DomainInterface {
   }
 
   /**
-   * Overrides Drupal\Core\Config\Entity\ConfigEntityBase::preSave().
-   *
-   * @param \Drupal\Core\Entity\EntityStorageInterface $storage_controller
-   *   The entity storage object.
+   * {@inheritdoc}
    */
-  public function preSave(EntityStorageInterface $storage_controller) {
+  public function preSave(EntityStorageInterface $storage) {
+    parent::preSave($storage);
     // Sets the default domain properly.
-    $loader = \Drupal::service('domain.loader');
-    /** @var DomainInterface $default */
-    $default = $loader->loadDefaultDomain();
+    /** @var self $default */
+    $default = $storage->loadDefaultDomain();
     if (!$default) {
-      $this->is_default = 1;
+      $this->is_default = TRUE;
     }
-    elseif ($this->is_default && $default->id() != $this->id()) {
+    elseif ($this->is_default && $default->getDomainId() != $this->getDomainId()) {
       // Swap the current default.
-      $default->is_default = 0;
+      $default->is_default = FALSE;
       $default->save();
     }
-    // Ensures we have a proper domain_id.
-    if ($this->isNew()) {
+    // Ensures we have a proper domain_id but does not erase existing ones.
+    if ($this->isNew() && empty($this->getDomainId())) {
       $this->createDomainId();
+    }
+    // Prevent duplicate hostname.
+    $hostname = $this->getHostname();
+    // Do not use domain loader because it may change hostname.
+    $existing = $storage->loadByProperties(['hostname' => $hostname]);
+    $existing = reset($existing);
+    if ($existing && $this->getDomainId() != $existing->getDomainId()) {
+      throw new ConfigValueException("The hostname ($hostname) is already registered.");
     }
   }
 
@@ -365,12 +369,57 @@ class Domain extends ConfigEntityBase implements DomainInterface {
   /**
    * {@inheritdoc}
    */
+  public static function postDelete(EntityStorageInterface $storage, array $entities) {
+    parent::postDelete($storage, $entities);
+    foreach ($entities as $entity) {
+      $actions = $storage->loadMultiple([
+        'domain_default_action.' . $entity->id(),
+        'domain_delete_action.' . $entity->id(),
+        'domain_disable_action.' . $entity->id(),
+        'domain_enable_action.' . $entity->id(),
+      ]);
+      foreach ($actions as $action) {
+        $action->delete();
+      }
+    }
+    // Invalidate cache tags relevant to domains.
+    \Drupal::service('cache_tags.invalidator')->invalidateTags(['rendered', 'url.site']);
+  }
+
+  /**
+   * {@inheritdoc}
+   */
   public function createDomainId() {
     // We cannot reliably use sequences (1, 2, 3) because those can be different
     // across environments. Instead, we use the crc32 hash function to create a
     // unique numeric id for each domain. In some systems (Windows?) we have
     // reports of crc32 returning a negative number. Issue #2794047.
-    $this->domain_id = abs((int) crc32($this->id()));
+    // If we don't use hash(), then crc32() returns different results for 32-
+    // and 64-bit systems. On 32-bit systems, the number returned may also be
+    // too large for PHP.
+    // See #2908236.
+    $id = hash('crc32', $this->id());
+    $id = abs(hexdec(substr($id, 0, -2)));
+    $this->createNumericId($id);
+  }
+
+  /**
+   * Creates a unique numeric id for use in the {node_access} table.
+   *
+   * @param int $id
+   *   An integer to use as the numeric id.
+   */
+  public function createNumericId($id) {
+    // Ensure that this value is unique.
+    $storage = \Drupal::entityTypeManager()->getStorage('domain');
+    $result = $storage->loadByProperties(['domain_id' => $id]);
+    if (empty($result)) {
+      $this->domain_id = $id;
+    }
+    else {
+      $id++;
+      $this->createNumericId($id);
+    }
   }
 
   /**
@@ -378,12 +427,22 @@ class Domain extends ConfigEntityBase implements DomainInterface {
    */
   public function getScheme($add_suffix = TRUE) {
     $scheme = $this->scheme;
-    if ($scheme != 'https') {
+    if ($scheme == 'variable') {
+      $scheme = \Drupal::entityTypeManager()->getStorage('domain')->getDefaultScheme();
+    }
+    elseif ($scheme != 'https') {
       $scheme = 'http';
     }
     $scheme .= ($add_suffix) ? '://' : '';
 
     return $scheme;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getRawScheme() {
+    return $this->scheme;
   }
 
   /**
@@ -408,7 +467,7 @@ class Domain extends ConfigEntityBase implements DomainInterface {
    * {@inheritdoc}
    */
   public function getLink($current_path = TRUE) {
-    $options = array('absolute' => TRUE, 'https' => $this->isHttps());
+    $options = ['absolute' => TRUE, 'https' => $this->isHttps()];
     if ($current_path) {
       $url = Url::fromUri($this->getUrl(), $options);
     }
@@ -416,7 +475,7 @@ class Domain extends ConfigEntityBase implements DomainInterface {
       $url = Url::fromUri($this->getPath(), $options);
     }
 
-    return Link::fromTextAndUrl($this->getHostname(), $url)->toString();
+    return Link::fromTextAndUrl($this->getCanonical(), $url)->toString();
   }
 
   /**
@@ -464,7 +523,7 @@ class Domain extends ConfigEntityBase implements DomainInterface {
   /**
    * {@inheritdoc}
    */
-  public function setMatchType($match_type = \Drupal\domain\DomainNegotiator::DOMAIN_MATCH_EXACT) {
+  public function setMatchType($match_type = DomainNegotiatorInterface::DOMAIN_MATCHED_EXACT) {
     $this->matchType = $match_type;
   }
 
@@ -475,11 +534,49 @@ class Domain extends ConfigEntityBase implements DomainInterface {
     return $this->matchType;
   }
 
- /**
-  * This is being fired for some reason if the values are shown on a
-  * content type.
-  */
-  public function isDefaultRevision($new_value = NULL) {
-    return TRUE;
+  /**
+   * {@inheritdoc}
+   */
+  public function getPort() {
+    $ports = explode(':', $this->getHostname());
+    if (isset($ports[1])) {
+      return ':' . $ports[1];
+    }
+    return '';
   }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function setCanonical($hostname = NULL) {
+    if (is_null($hostname)) {
+      $this->canonical = $this->getHostname();
+    }
+    else {
+      $this->canonical = $hostname;
+    }
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getCanonical() {
+    if (empty($this->canonical)) {
+      $this->setCanonical();
+    }
+    return $this->canonical;
+  }
+
+  /**
+   * Prevent render errors when Twig wants to read this object.
+   *
+   * @see \Drupal\Core\Template\TwigExtension::escapeFilter()
+   *
+   * @return string
+   *   The name of the domain being rendered.
+   */
+  public function toString() {
+    return $this->name;
+  }
+
 }

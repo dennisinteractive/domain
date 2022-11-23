@@ -6,9 +6,9 @@ use Drupal\Core\Cache\Cache;
 use Drupal\Core\Cache\CacheableDependencyInterface;
 use Drupal\Core\Form\FormStateInterface;
 use Drupal\Core\Session\AccountInterface;
+use Drupal\domain\DomainNegotiatorInterface;
+use Drupal\domain\DomainStorageInterface;
 use Drupal\views\Plugin\views\access\AccessPluginBase;
-use Drupal\domain\DomainLoader;
-use Drupal\domain\DomainNegotiator;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\Routing\Route;
 
@@ -31,9 +31,9 @@ class Domain extends AccessPluginBase implements CacheableDependencyInterface {
   /**
    * Domain storage.
    *
-   * @var \Drupal\domain\DomainLoader
+   * @var \Drupal\domain\DomainStorageInterface
    */
-  protected $domainLoader;
+  protected $domainStorage;
 
   /**
    * Domain negotiation.
@@ -51,14 +51,14 @@ class Domain extends AccessPluginBase implements CacheableDependencyInterface {
    *   The plugin_id for the plugin instance.
    * @param mixed $plugin_definition
    *   The plugin implementation definition.
-   * @param DomainLoader $domain_loader
+   * @param \Drupal\domain\DomainStorageInterface $domain_storage
    *   The domain storage loader.
-   * @param DomainNegotiator $domain_negotiator
+   * @param \Drupal\domain\DomainNegotiatorInterface $domain_negotiator
    *   The domain negotiator.
    */
-  public function __construct(array $configuration, $plugin_id, $plugin_definition, DomainLoader $domain_loader, DomainNegotiator $domain_negotiator) {
+  public function __construct(array $configuration, $plugin_id, $plugin_definition, DomainStorageInterface $domain_storage, DomainNegotiatorInterface $domain_negotiator) {
     parent::__construct($configuration, $plugin_id, $plugin_definition);
-    $this->domainLoader = $domain_loader;
+    $this->domainStorage = $domain_storage;
     $this->domainNegotiator = $domain_negotiator;
   }
 
@@ -70,7 +70,7 @@ class Domain extends AccessPluginBase implements CacheableDependencyInterface {
       $configuration,
       $plugin_id,
       $plugin_definition,
-      $container->get('domain.loader'),
+      $container->get('entity_type.manager')->getStorage('domain'),
       $container->get('domain.negotiator')
     );
   }
@@ -93,6 +93,9 @@ class Domain extends AccessPluginBase implements CacheableDependencyInterface {
     }
   }
 
+  /**
+   * {@inheritdoc}
+   */
   public function summaryTitle() {
     $count = count($this->options['domain']);
     if ($count < 1) {
@@ -102,40 +105,48 @@ class Domain extends AccessPluginBase implements CacheableDependencyInterface {
       return $this->t('Multiple domains');
     }
     else {
-      $domains = $this->domainLoader->loadOptionsList();
+      $domains = $this->domainStorage->loadOptionsList();
       $domain = reset($this->options['domain']);
       return $domains[$domain];
     }
   }
 
-
+  /**
+   * {@inheritdoc}
+   */
   protected function defineOptions() {
     $options = parent::defineOptions();
-    $options['domain'] = array('default' => array());
+    $options['domain'] = ['default' => []];
 
     return $options;
   }
 
+  /**
+   * {@inheritdoc}
+   */
   public function buildOptionsForm(&$form, FormStateInterface $form_state) {
     parent::buildOptionsForm($form, $form_state);
-    $form['domain'] = array(
+    $form['domain'] = [
       '#type' => 'checkboxes',
       '#title' => $this->t('Domain'),
       '#default_value' => $this->options['domain'],
-      '#options' => $this->domainLoader->loadOptionsList(),
+      '#options' => $this->domainStorage->loadOptionsList(),
       '#description' => $this->t('Only the checked domain(s) will be able to access this display.'),
-    );
+    ];
   }
 
+  /**
+   * {@inheritdoc}
+   */
   public function validateOptionsForm(&$form, FormStateInterface $form_state) {
-    $domain = $form_state->getValue(array('access_options', 'domain'));
+    $domain = $form_state->getValue(['access_options', 'domain']);
     $domain = array_filter($domain);
 
     if (!$domain) {
       $form_state->setError($form['domain'], $this->t('You must select at least one domain if type is "by domain"'));
     }
 
-    $form_state->setValue(array('access_options', 'domain'), $domain);
+    $form_state->setValue(['access_options', 'domain'], $domain);
   }
 
   /**
@@ -145,7 +156,7 @@ class Domain extends AccessPluginBase implements CacheableDependencyInterface {
     $dependencies = parent::calculateDependencies();
 
     foreach (array_keys($this->options['domain']) as $id) {
-      if ($domain = $this->domainLoader->load($id)) {
+      if ($domain = $this->domainStorage->load($id)) {
         $dependencies[$domain->getConfigDependencyKey()][] = $domain->getConfigDependencyName();
       }
     }

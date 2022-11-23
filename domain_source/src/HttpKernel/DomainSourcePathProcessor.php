@@ -2,24 +2,20 @@
 
 namespace Drupal\domain_source\HttpKernel;
 
-use Drupal\domain\DomainLoaderInterface;
 use Drupal\domain\DomainNegotiatorInterface;
+use Drupal\path_alias\AliasManagerInterface;
+use Drupal\Core\Config\ConfigFactoryInterface;
+use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\Core\Extension\ModuleHandlerInterface;
 use Drupal\Core\PathProcessor\OutboundPathProcessorInterface;
 use Drupal\Core\Render\BubbleableMetadata;
+use Drupal\Core\Url;
 use Symfony\Component\HttpFoundation\Request;
 
 /**
  * Processes the outbound path using path alias lookups.
  */
 class DomainSourcePathProcessor implements OutboundPathProcessorInterface {
-
-  /**
-   * The Domain loader.
-   *
-   * @var \Drupal\domain\DomainLoaderInterface $loader
-   */
-  protected $loader;
 
   /**
    * The Domain negotiator.
@@ -36,55 +32,149 @@ class DomainSourcePathProcessor implements OutboundPathProcessorInterface {
   protected $moduleHandler;
 
   /**
+   * The entity type manager.
+   *
+   * @var \Drupal\Core\Entity\EntityTypeManagerInterface
+   */
+  protected $entityTypeManager;
+
+  /**
+   * The path alias manager.
+   *
+   * @var \Drupal\Core\Path\AliasManagerInterface
+   */
+  protected $aliasManager;
+
+  /**
+   * The config factory.
+   *
+   * @var \Drupal\Core\Config\ConfigFactoryInterface
+   */
+  protected $configFactory;
+
+  /**
+   * An array of content entity types.
+   *
+   * @var array
+   */
+  protected $entityTypes;
+
+  /**
+   * An array of routes exclusion settings, keyed by route.
+   *
+   * @var array
+   */
+  protected $excludedRoutes;
+
+  /**
+   * The active domain request.
+   *
+   * @var \Drupal\domain\DomainInterface
+   */
+  protected $activeDomain;
+
+  /**
+   * The domain storage.
+   *
+   * @var \Drupal\domain\DomainStorageInterface|null
+   */
+  protected $domainStorage;
+
+  /**
    * Constructs a DomainSourcePathProcessor object.
    *
-   * @param \Drupal\domain\DomainLoaderInterface $loader
-   *   The domain loader.
    * @param \Drupal\domain\DomainNegotiatorInterface $negotiator
    *   The domain negotiator.
    * @param \Drupal\Core\Extension\ModuleHandlerInterface $module_handler
    *   The module handler service.
+   * @param \Drupal\Core\Entity\EntityTypeManagerInterface $entity_type_manager
+   *   The entity type manager.
+   * @param \Drupal\path_alias\AliasManagerInterface $alias_manager
+   *   The path alias manager.
+   * @param \Drupal\Core\Config\ConfigFactoryInterface $config_factory
+   *   The config factory.
    */
-  public function __construct(DomainLoaderInterface $loader, DomainNegotiatorInterface $negotiator, ModuleHandlerInterface $module_handler) {
-    $this->loader = $loader;
+  public function __construct(DomainNegotiatorInterface $negotiator, ModuleHandlerInterface $module_handler, EntityTypeManagerInterface $entity_type_manager, AliasManagerInterface $alias_manager, ConfigFactoryInterface $config_factory) {
     $this->negotiator = $negotiator;
     $this->moduleHandler = $module_handler;
+    $this->entityTypeManager = $entity_type_manager;
+    $this->aliasManager = $alias_manager;
+    $this->configFactory = $config_factory;
   }
 
   /**
    * {@inheritdoc}
    */
-  public function processOutbound($path, &$options = array(), Request $request = NULL, BubbleableMetadata $bubbleable_metadata = NULL) {
-    static $active_domain;
-
-    if (!isset($active_domain)) {
-      // Ensure that the loader has run.
-      // In some tests, the kernel event has not.
-      $active = \Drupal::service('domain.negotiator')->getActiveDomain();
-      if (empty($active)) {
-        $active = \Drupal::service('domain.negotiator')->getActiveDomain(TRUE);
-      }
-      $active_domain = $active;
+  public function processOutbound($path, &$options = [], Request $request = NULL, BubbleableMetadata $bubbleable_metadata = NULL) {
+    // Load the active domain if not set.
+    if (empty($options['active_domain'])) {
+      $active_domain = $this->getActiveDomain();
     }
 
     // Only act on valid internal paths and when a domain loads.
     if (empty($active_domain) || empty($path) || !empty($options['external'])) {
       return $path;
     }
+
+    // Set the default source information.
     $source = NULL;
     $options['active_domain'] = $active_domain;
 
-    $entity = $this->getEntity($path, $options, 'node');
+    // Get the current language.
+    $langcode = NULL;
+    if (!empty($options['language'])) {
+      $langcode = $options['language']->getId();
+    }
 
-    // One hook for nodes.
-    if (!empty($entity)) {
-      if ($target_id = domain_source_get($entity)) {
-        $source = $this->loader->load($target_id);
+    // Get the URL object for this request.
+    $alias = $this->aliasManager->getPathByAlias($path, $langcode);
+    $url = Url::fromUserInput($alias, $options);
+
+    // Get the route name to pass through to the alter hooks.
+    if ($url->isRouted()) {
+      $options['route_name'] = $url->getRouteName();
+    }
+
+    // Check the route, if available. Entities can be configured to
+    // only rewrite specific routes.
+    if ($url->isRouted() && $this->allowedRoute($url->getRouteName())) {
+      // Load the entity to check.
+      if (!empty($options['entity'])) {
+        $entity = $options['entity'];
       }
+      else {
+        $parameters = $url->getRouteParameters();
+        if (!empty($parameters)) {
+          $entity = $this->getEntity($parameters);
+        }
+      }
+    }
+
+    // One hook for entities.
+    if (!empty($entity) && is_object($entity)) {
+      // Ensure we send the right translation.
+      if (!empty($langcode) && method_exists($entity, 'hasTranslation') && $entity->hasTranslation($langcode) && $translation = $entity->getTranslation($langcode)) {
+        $entity = $translation;
+      }
+      if (isset($options['domain_target_id'])) {
+        $target_id = $options['domain_target_id'];
+      }
+      else {
+        $target_id = domain_source_get($entity);
+      }
+      if (!empty($target_id)) {
+        $source = $this->domainStorage()->load($target_id);
+      }
+      $options['entity'] = $entity;
+      $options['entity_type'] = $entity->getEntityTypeId();
       $this->moduleHandler->alter('domain_source', $source, $path, $options);
     }
     // One for other, because the latter is resource-intensive.
     else {
+      if (isset($options['domain_target_id'])) {
+        $target_id = $options['domain_target_id'];
+        $source = $this->domainStorage()->load($target_id);
+      }
       $this->moduleHandler->alter('domain_source_path', $source, $path, $options);
     }
     // If a source domain is specified, rewrite the link.
@@ -97,52 +187,113 @@ class DomainSourcePathProcessor implements OutboundPathProcessorInterface {
   }
 
   /**
-   * Derive entity data from a given path.
+   * Derive entity data from a given route's parameters.
    *
-   * @param $path
-   *   The drupal path, e.g. /node/2.
-   * @param $options array
-   *   The options passed to the path processor.
-   * @param $type
-   *   The entity type to check.
+   * @param array $parameters
+   *   An array of route parameters.
    *
-   * @return $entity|NULL
+   * @return \Drupal\Core\Entity\EntityInterface|null
+   *   Returns the entity when available, otherwise NULL.
    */
-  public static function getEntity($path, $options, $type = 'node') {
+  public function getEntity(array $parameters) {
     $entity = NULL;
-    if (isset($options['entity_type']) && $options['entity_type'] == $type) {
-      $entity = $options['entity'];
-    }
-    elseif (isset($options['route'])) {
-      // Derive the route pattern and check that it maps to the expected entity
-      // type.
-      $route_path = $options['route']->getPath();
-      $entityManager = \Drupal::entityTypeManager();
-      $entityType = $entityManager->getDefinition($type);
-      $links = $entityType->getLinkTemplates();
-
-      // Check that the route pattern is an entity template.
-      if (in_array($route_path, $links)) {
-        $parts = explode('/', $route_path);
-        $i = 0;
-        foreach ($parts as $part) {
-          if (!empty($part)) {
-            $i++;
-          }
-          if ($part == '{' . $type . '}') {
-            break;
-          }
-        }
-        // Get Node path if alias.
-        $node_path = \Drupal::service('path.alias_manager')->getPathByAlias($path);
-        // Look! We're using arg() in Drupal 8 because we have to.
-        $args = explode('/', $node_path);
-        if (isset($args[$i])) {
-          $entity = \Drupal::entityTypeManager()->getStorage($type)->load($args[$i]);
-        }
+    $entity_type = key($parameters);
+    $entity_types = $this->getEntityTypes();
+    foreach ($parameters as $entity_type => $value) {
+      if (!empty($entity_type) && isset($entity_types[$entity_type])) {
+        $entity = $this->entityTypeManager->getStorage($entity_type)->load($value);
       }
     }
     return $entity;
+  }
+
+  /**
+   * Checks that a route's common name is not disallowed.
+   *
+   * Looks at the name (e.g. canonical) of the route without regard for
+   * the entity type.
+   *
+   * @parameter $name
+   *   The route name being checked.
+   *
+   * @return bool
+   *   Returns TRUE when allowed, otherwise FALSE.
+   */
+  public function allowedRoute($name) {
+    $excluded = $this->getExcludedRoutes();
+    $parts = explode('.', $name);
+    $route_name = end($parts);
+    // Config is stored as an array. Empty items are not excluded.
+    return !isset($excluded[$route_name]);
+  }
+
+  /**
+   * Gets an array of content entity types, keyed by type.
+   *
+   * @return \Drupal\Core\Entity\EntityTypeInterface[]
+   *   An array of content entity types, keyed by type.
+   */
+  public function getEntityTypes() {
+    if (!isset($this->entityTypes)) {
+      foreach ($this->entityTypeManager->getDefinitions() as $type => $definition) {
+        if ($definition->getGroup() == 'content') {
+          $this->entityTypes[$type] = $type;
+        }
+      }
+    }
+    return $this->entityTypes;
+  }
+
+  /**
+   * Gets the settings for domain source path rewrites.
+   *
+   * @return array
+   *   The settings for domain source path rewrites.
+   */
+  public function getExcludedRoutes() {
+    if (!isset($this->excludedRoutes)) {
+      $config = $this->configFactory->get('domain_source.settings');
+      $routes = $config->get('exclude_routes');
+      if (is_array($routes)) {
+        $this->excludedRoutes = array_flip($routes);
+      }
+      else {
+        $this->excludedRoutes = [];
+      }
+    }
+    return $this->excludedRoutes;
+  }
+
+  /**
+   * Gets the active domain.
+   *
+   * @return \Drupal\domain\DomainInterface
+   *   The active domain.
+   */
+  public function getActiveDomain() {
+    if (!isset($this->activeDomain)) {
+      // Ensure that the loader has run.
+      // In some tests, the kernel event has not.
+      $active = $this->negotiator->getActiveDomain();
+      if (empty($active)) {
+        $active = $this->negotiator->getActiveDomain(TRUE);
+      }
+      $this->activeDomain = $active;
+    }
+    return $this->activeDomain;
+  }
+
+  /**
+   * Retrieves the domain storage handler.
+   *
+   * @return \Drupal\domain\DomainStorageInterface
+   *   The domain storage handler.
+   */
+  protected function domainStorage() {
+    if (!$this->domainStorage) {
+      $this->domainStorage = $this->entityTypeManager->getStorage('domain');
+    }
+    return $this->domainStorage;
   }
 
 }

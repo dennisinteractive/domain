@@ -2,7 +2,6 @@
 
 namespace Drupal\domain\Plugin\Block;
 
-use Drupal\Component\Utility\Html;
 use Drupal\Core\Access\AccessResult;
 use Drupal\Core\Session\AccountInterface;
 use Drupal\domain\DomainInterface;
@@ -21,41 +20,40 @@ class DomainTokenBlock extends DomainBlockBase {
    * Overrides \Drupal\block\BlockBase::access().
    */
   public function access(AccountInterface $account, $return_as_object = FALSE) {
-    $access = AccessResult::allowedIfHasPermissions($account, array('administer domains', 'view domain information'), 'OR');
+    $access = AccessResult::allowedIfHasPermissions($account, ['administer domains', 'view domain information'], 'OR');
     return $return_as_object ? $access : $access->isAllowed();
   }
 
   /**
    * Build the output.
-   *
-   * @TODO: abstract or theme this function?
    */
   public function build() {
     /** @var \Drupal\domain\DomainInterface $domain */
     $domain = \Drupal::service('domain.negotiator')->getActiveDomain();
     if (!$domain) {
-      return array(
+      return [
         '#markup' => $this->t('No domain record could be loaded.'),
-      );
+      ];
     }
-    $header = array($this->t('Token'), $this->t('Value'));
-    return array(
+    $header = [$this->t('Token'), $this->t('Value')];
+    return [
       '#theme' => 'table',
       '#rows' => $this->renderTokens($domain),
       '#header' => $header,
-    );
+    ];
   }
 
   /**
    * Generates available tokens for printing.
    *
-   * @param Drupal\domain\DomainInterface $domain
+   * @param \Drupal\domain\DomainInterface $domain
    *   The active domain request.
+   *
    * @return array
    *   An array keyed by token name, with value of replacement value.
    */
   private function renderTokens(DomainInterface $domain) {
-    $rows = array();
+    $rows = [];
     $token = \Drupal::token();
     $tokens = $token->getInfo();
     // The 'domain' token is supported by core. The others by Token module,

@@ -3,5 +3,13 @@ services:
     class: Drupal\domain_config\DomainConfigOverrider
     tags:
       - { name: config.factory.override, priority: -150}
-    arguments: ['@domain.negotiator', '@config.storage']
+    arguments: ['@config.storage', '@module_handler']
 
+  domain_config.library.discovery.collector:
+    decorates: library.discovery.collector
+    class: \Drupal\domain_config\DomainConfigLibraryDiscoveryCollector
+    arguments: ['@cache.discovery', '@lock', '@library.discovery.parser', '@theme.manager']
+    tags:
+      - { name: needs_destruction }
+    calls:
+      - [setDomainNegotiator, ['@domain.negotiator']]

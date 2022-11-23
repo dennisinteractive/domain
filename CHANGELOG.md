@@ -9,6 +9,21 @@ Changelog
 20-NOV-2016 8.x-1.0-alpha6
 06-DEC-2016 Adds the domain_alpha module to handle critical pre-release updates.
 13-DEC-2016 8.x-1.0-alpha7
+12-MAR-2017 8.x-1.0-alpha8
+23-APR-2017 8.x-1.0-alpha9
+01-DEC-2017 8.x-1.0-alpha10
+19-DEC-2017 8.x-1.0-alpha11
+12-FEB-2018 8.x-1.0-alpha12
+07-MAR-2018 8.x-1.0-alpha13
+19-OCT-2018 8.x-1.0-alpha14
+21-FEB-2019 8.x-1.0-alpha15
+21-JUN-2019 8.x-1.0-alpha16
+19-JUN-2020 8.x-1.0-beta1
+24-JUN-2020 8.x-1.0-beta2
+16-FEB-2021 8.x-1.0-beta3
+19-FEB-2021 8.x-1.0-beta4
+25-FEB-2021 8.x-1.0-beta5
+24-JUN-2021 8.x-1.0-beta6
 
 Status
 ====
@@ -64,59 +79,63 @@ marked with [x] are considered complete.
 - [x] Actions for domain operations
 - [x] Drush support for domain operations
 - [x] Replace / inject the storage manager in DomainAliasLoader.
-- [x] Replace / inject the storage manager in DomainLoader.
-- [ ] Write tests for Domain Content.
+- [x] Replace / inject the storage manager in domainStorage.
+- [x] Write tests for Domain Content.
 - [x] Views access handler for domain content.
-- [ ] Restrict Domain Source options using JS
-- [ ] Recreate the Domain Theme module
-- [ ] Advanced drush integration / complete labelled tasks
-- [ ] Check domain responses on configuration forms
+- [x] Restrict Domain Source options using JS
 - [x] Handle site name overrides -- perhaps as a new field?
 - [x] Restore the `domain_grant_all` permission?
 - [x] Domain token support
-- [ ] Test cron handling
 - [x] Module configurations
   - [x] Allow configuration of access-exempt paths for inactive domains
   - [x] www prefix handling
   - [x] Add domain-specific CSS classes
   - [x] Path matching for URL rewrites?
   - [x] Allow non-ascii characters in domains
-- [ ] Recreate the Domain Nav module
-- [ ] Support Tour module
+- [x] Recreate the Domain Nav module
 - [x] Allow selective access to domain record editing
 - [x] Allow access to actions based on assigned domain permissions
-- [ ] Implement theme functions or twig templates where proper
-- [ ] Tests for all module hooks
+- [x] Tests for all module hooks
 - [x] Proper tests for domain record validation
 - [x] Check test logic in testDomainAliasNegotiator()
 - [x] Test that sort logic in DomainAliasLoader matches what is documented
-- [ ] Error handling in DomainAliasForm
-- [ ] Error checking in DomainAliasController
-- [ ] Deprecated methods in DomainAliasController
-- [ ] Error reporting in `domain_alias_domain_request_alter()`
-- [ ] Ensure completeness of DomainAccessPermissionsTest
-- [ ] Check module setup behavior in tests
-- [ ] Make all affiliates default value configurable?
-- [ ] Cache in the DomainAccessManager
-- [ ] Remove deprecated `entity_get_form_display`
-- [ ] Review drupalUserIsLoggedIn() hack
+- [x] Error handling in DomainAliasForm
+- [x] Error checking in DomainAliasController
+- [x] Deprecated methods in DomainAliasController
+- [x] Error reporting in `domain_alias_domain_request_alter()`
+- [x] Ensure completeness of DomainAccessPermissionsTest
+- [x] Check module setup behavior in tests
+- [x] Make all affiliates default value configurable
+- [x] Review drupalUserIsLoggedIn() hack
 - [x] Review DomainNegotiatorTest for completeness
 - [x] Review core note in DomainEntityReferenceTest
-- [ ] Expand DomainActionsTest
-- [ ] DomainViewBuilder review
-- [ ] Dependency Injection in DomainValidator
+- [x] Expand DomainActionsTest
+- [x] DomainViewBuilder review
+- [x] Dependency Injection in DomainValidator
+- [x] Inject the module handler service in DomainListBuilder::getOperations()
+- [x] `drush_domain_generate_domains()` has odd counting logic
+- [x] Separate permissions for Domain Alias
+- [x] Check loader logic in the DomainSource PathProcessor
+- [x] Check loader logic in Domain Access `node_access`
+- [x] Check id logic in Domain Alias list controller
+- [x] Check domain responses on configuration forms
+- [x] Remove deprecated `entity_get_form_display`
+- [x] Implement theme functions or twig templates where proper
+- [x] Advanced drush integration / complete labelled tasks
+- [ ] Add filter options to domain_access and domain_source views
+- [ ] Test cron handling
 - [ ] Caching strategies in DomainNegotiator
 - [ ] Caching strategies in DomainConfigOverrides
-- [x] Inject the module handler service in DomainListBuilder::getOperations()
-- [ ] `drush_domain_generate_domains()` has odd counting logic
-- [x] Separate permissions for Domain Alias
-- [ ] Check loader logic in the DomainSource PathProcessor
-- [ ] Check loader logic in Domain Access node_access
-- [ ] Check id logic in Domain Alias list controller
+- [ ] Cache in the DomainAccessManager
+- [ ] Proper handling of default node values
+- [ ] Do not allow actions to be edited?
+- [o] Recreate the Domain Theme module -- see https://www.drupal.org/project/domain_theme_switch
 
 # Final
 - [ ] Security review
 - [ ] Provide an upgrade path from 6.x
 - [ ] Provide an upgrade path from 7.x-3.x
-- [ ] Remove calls to deprecated methods / classes
+- [x] Remove calls to deprecated methods / classes
 - [ ] Remove unnecessary use statements
+- [ ] Support Tour module
+- [ ] Views schema fails -- see https://www.drupal.org/project/drupal/issues/2834801
